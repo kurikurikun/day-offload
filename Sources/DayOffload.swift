@@ -190,8 +190,28 @@ final class Model: ObservableObject {
     // Shoot range: when on, a newly inserted card is scanned, the days in this
     // range are picked, and the offload sheet pops up.
     @Published var autoOn: Bool { didSet { defaults.set(autoOn, forKey: "autoOn"); applyRange() } }
-    @Published var rangeFrom: Date { didSet { defaults.set(rangeFrom, forKey: "rangeFrom"); applyRange() } }
-    @Published var rangeTo: Date { didSet { defaults.set(rangeTo, forKey: "rangeTo"); applyRange() } }
+    /// Today mode (default): whatever day it is when a card goes in. Off = the From/To range below.
+    @Published var useToday: Bool {
+        didSet { defaults.set(useToday, forKey: "useToday"); if useToday { syncToday() }; applyRange() }
+    }
+    @Published var rangeFrom: Date { didSet { defaults.set(rangeFrom, forKey: "rangeFrom"); rangeEdited(); applyRange() } }
+    @Published var rangeTo: Date { didSet { defaults.set(rangeTo, forKey: "rangeTo"); rangeEdited(); applyRange() } }
+    private var syncing = false
+
+    /// Today mode: put today's shoot day in the From / To boxes.
+    func syncToday() {
+        guard useToday, let d = isoDay.date(from: todayShootDay) else { return }
+        syncing = true
+        if isoDay.string(from: rangeFrom) != todayShootDay { rangeFrom = d }
+        if isoDay.string(from: rangeTo) != todayShootDay { rangeTo = d }
+        syncing = false
+    }
+
+    /// Changing a date by hand means "use this range", not today.
+    private func rangeEdited() {
+        guard !syncing, useToday else { return }
+        if isoDay.string(from: rangeFrom) != todayShootDay || isoDay.string(from: rangeTo) != todayShootDay { useToday = false }
+    }
     @Published var showSheet = false
     // Compare: day-by-day shoot copies vs. the whole-card Stow backup made at the office.
     @Published var mode: Mode = .offload
@@ -230,10 +250,12 @@ final class Model: ObservableObject {
         dayStartHour = defaults.object(forKey: "dayStartHour") as? Int ?? 4
         dests = (defaults.stringArray(forKey: "dests") ?? []).map { URL(fileURLWithPath: $0) }
         autoOn = defaults.bool(forKey: "autoOn")
+        useToday = defaults.object(forKey: "useToday") as? Bool ?? true
         rangeFrom = defaults.object(forKey: "rangeFrom") as? Date ?? Date()
         rangeTo = defaults.object(forKey: "rangeTo") as? Date ?? Date()
         refreshVolumes()
         for d in dests { if let v = volumeOf(d) { markNotCard(v) } }
+        syncToday()
         if isDemo { loadDemo() }
     }
 
@@ -248,6 +270,7 @@ final class Model: ObservableObject {
         source = URL(fileURLWithPath: "/Volumes/A001"); label = "A001"
         dests = [URL(fileURLWithPath: "/Volumes/SHOOT_SSD/2026_10_Documentary"),
                  URL(fileURLWithPath: "/Volumes/SHOOT_SSD_BU/2026_10_Documentary")]
+        useToday = false
         rangeFrom = f.date(from: "2026-10-16")!; rangeTo = f.date(from: "2026-10-17")!
         autoOn = true
         selectedDays = ["2026-10-17", "2026-10-16"]
@@ -279,7 +302,13 @@ final class Model: ObservableObject {
     var chosen: [DaySummary] { days.filter { selectedDays.contains($0.day) } }
     var chosenFiles: Int { chosen.map(\.files).reduce(0, +) }
     var chosenBytes: Int64 { chosen.map(\.bytes).reduce(0, +) }
+    /// Today's shoot day: before the day-start hour (04:00) it's still yesterday's shoot.
+    var todayShootDay: String {
+        isoDay.string(from: Date().addingTimeInterval(-Double(dayStartHour) * 3600))
+    }
+
     var rangeText: String {
+        if useToday { return "Today · \(prettyDay(todayShootDay))" }
         let a = isoDay.string(from: rangeFrom), b = isoDay.string(from: rangeTo)
         return a == b ? prettyDay(a) : "\(prettyDay(min(a, b))) – \(prettyDay(max(a, b)))"
     }
@@ -291,6 +320,7 @@ final class Model: ObservableObject {
     }
 
     func inRange(_ day: String) -> Bool {
+        if useToday { return day == todayShootDay }
         let a = isoDay.string(from: rangeFrom), b = isoDay.string(from: rangeTo)
         return min(a, b) <= day && day <= max(a, b)
     }
@@ -304,6 +334,7 @@ final class Model: ObservableObject {
     }
 
     func choose(_ url: URL?, auto: Bool = false) {
+        syncToday()
         source = url
         label = url?.lastPathComponent ?? ""
         scan(auto: auto)
@@ -313,6 +344,7 @@ final class Model: ObservableObject {
         refreshVolumes()
         // Ignore backup drives, disk images and anything that isn't a camera card.
         guard autoOn, !isDemo else { return }
+        syncToday()
         let d = dests.map(\.path)
         Task {
             // Looking inside a drive can be slow; never do it on the main thread.
@@ -333,6 +365,7 @@ final class Model: ObservableObject {
 
     /// Queue every inserted card (not the backup drives) and start on the first.
     func queueAllMounted() {
+        syncToday()
         refreshVolumes()
         let vols = volumes, d = dests.map(\.path)
         Task {
@@ -1006,6 +1039,11 @@ struct ContentView: View {
                     Toggle("Open Day Offload automatically when a card is connected", isOn: $m.openOnCard)
                         .toggleStyle(.switch)
                     HStack(spacing: 10) {
+                        Picker("", selection: $m.useToday) {
+                            Text("Today").tag(true)
+                            Text("Date range").tag(false)
+                        }
+                        .pickerStyle(.segmented).labelsHidden().fixedSize()
                         DatePicker("From", selection: $m.rangeFrom, displayedComponents: .date)
                         DatePicker("to", selection: $m.rangeTo, displayedComponents: .date)
                         Spacer()
