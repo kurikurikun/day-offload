@@ -9,6 +9,8 @@ struct DaySummary: Identifiable, Hashable {
     var id: String { day }
 }
 
+func fileCount(_ n: Int) -> String { n == 1 ? "1 file" : "\(n) files" }
+
 func gb(_ b: Int64) -> String { String(format: "%.1f GB", Double(b) / 1e9) }
 
 let isoDay: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f }()
@@ -773,7 +775,7 @@ struct OffloadSheet: View {
                 Image(systemName: "sdcard.fill").font(.system(size: 30)).foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(m.label) inserted").font(.title2).bold()
-                    Text("\(m.chosenFiles) files · \(gb(m.chosenBytes))").foregroundStyle(.secondary)
+                    Text("\(fileCount(m.chosenFiles)) · \(gb(m.chosenBytes))").foregroundStyle(.secondary)
                 }
             }
             Text(m.chosen.map(\.day).sorted().map(prettyDay).joined(separator: "  ·  "))
@@ -1018,16 +1020,21 @@ struct ContentView: View {
     @StateObject var m = Model()
 
     var body: some View {
-        ScrollView {
-        GlassGroup {
+        VStack(spacing: 0) {
+            // Pinned: the title and tabs never scroll away under the window buttons.
             VStack(alignment: .leading, spacing: 14) {
                 header
-
                 Picker("", selection: $m.mode) {
                     Label("Offload", systemImage: "arrow.down.doc").tag(Mode.offload)
                     Label("Compare with office backup", systemImage: "checkmark.shield").tag(Mode.compare)
                 }
                 .pickerStyle(.segmented).labelsHidden()
+            }
+            .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 12)
+
+        ScrollView {
+        GlassGroup {
+            VStack(alignment: .leading, spacing: 14) {
 
                 if m.mode == .compare {
                     CompareView(m: m)
@@ -1044,8 +1051,16 @@ struct ContentView: View {
                             Text("Date range").tag(false)
                         }
                         .pickerStyle(.segmented).labelsHidden().fixedSize()
-                        DatePicker("From", selection: $m.rangeFrom, displayedComponents: .date)
-                        DatePicker("to", selection: $m.rangeTo, displayedComponents: .date)
+                        HStack(spacing: 6) {
+                            Text("From")
+                            DatePicker("From", selection: $m.rangeFrom, displayedComponents: .date).labelsHidden()
+                            Text("to")
+                            DatePicker("to", selection: $m.rangeTo, displayedComponents: .date).labelsHidden()
+                        }
+                        .fixedSize()
+                        Spacer()
+                    }
+                    HStack {
                         Spacer()
                         Button { m.queueAllMounted() } label: { Label("Check all cards", systemImage: "sdcard.fill") }
                             .glassButton().disabled(!m.autoOn || m.busy)
@@ -1096,10 +1111,11 @@ struct ContentView: View {
                     .font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 20).padding(.bottom, 20).padding(.top, 8)
+            .padding(.horizontal, 20).padding(.bottom, 20).padding(.top, 2)
         }
         }
         .scrollIndicators(.automatic)
+        }
         .frame(width: 600)
         .frame(minHeight: 420, idealHeight: 820)
         .background(Backdrop())
@@ -1160,7 +1176,7 @@ struct ContentView: View {
                                 .font(.title3)
                             Text(prettyDay(d.day)).fontWeight(on ? .semibold : .regular)
                             Spacer()
-                            Text("\(d.files) files · \(gb(d.bytes))").foregroundStyle(.secondary).monospacedDigit()
+                            Text("\(fileCount(d.files)) · \(gb(d.bytes))").foregroundStyle(.secondary).monospacedDigit()
                         }
                         .padding(.vertical, 7).padding(.horizontal, 12)
                         .background(on ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.04), in: .rect(cornerRadius: 12))
@@ -1190,7 +1206,7 @@ struct ContentView: View {
             .glassPanel(tint: .accentColor.opacity(0.15), cornerRadius: 22)
         } else {
             Button { m.offload() } label: {
-                Label(m.chosen.isEmpty ? "Offload" : "Offload \(m.chosenFiles) files · \(gb(m.chosenBytes))",
+                Label(m.chosen.isEmpty ? "Offload" : "Offload \(fileCount(m.chosenFiles)) · \(gb(m.chosenBytes))",
                       systemImage: "arrow.down.doc.fill")
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
             }
