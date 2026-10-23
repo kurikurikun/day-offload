@@ -132,6 +132,23 @@ func setWatcher(_ on: Bool) {
     launchctl(["bootstrap", "gui/\(uid)", watcherPlist.path])
 }
 
+/// Splits the engine's output into lines. The pipe handler runs on a
+/// background queue, so the pending bytes are kept behind a lock.
+final class LineBuffer: @unchecked Sendable {
+    private var data = Data()
+    private let lock = NSLock()
+    func add(_ chunk: Data) -> [Data] {
+        lock.lock(); defer { lock.unlock() }
+        data.append(chunk)
+        var out: [Data] = []
+        while let nl = data.firstIndex(of: 0x0A) {
+            out.append(data.subdata(in: data.startIndex..<nl))
+            data.removeSubrange(data.startIndex...nl)
+        }
+        return out
+    }
+}
+
 enum Mode: String { case offload, compare }
 
 struct CompareCard: Identifiable {
@@ -407,12 +424,9 @@ final class Model: ObservableObject {
         p.executableURL = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
         p.arguments = ["--engine"] + args
         let pipe = Pipe(); p.standardOutput = pipe; p.standardError = pipe
-        var buffer = Data()
+        let lines = LineBuffer()
         pipe.fileHandleForReading.readabilityHandler = { h in
-            buffer.append(h.availableData)
-            while let nl = buffer.firstIndex(of: 0x0A) {
-                let line = buffer.subdata(in: buffer.startIndex..<nl)
-                buffer.removeSubrange(buffer.startIndex...nl)
+            for line in lines.add(h.availableData) {
                 if let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] {
                     DispatchQueue.main.async { onEvent(obj) }
                 }
