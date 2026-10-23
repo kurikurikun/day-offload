@@ -4,12 +4,12 @@ A Mac app for multi-day shoots: **offload only the days you shot from a camera c
 
 On a shoot you keep recording on the same cards day after day and only format them back at the office. Every offload tool you know copies the whole card each night; dragging today's clips out in Finder is risky. Day Offload copies just the shoot days you pick, checks every copy, and leaves the card exactly as it was.
 
-![A card goes in and Day Offload offers the shoot days](docs/card-inserted.png)
+![A card goes in: Day Offload shows the card, its shoot days and the exact folders, one press to offload](docs/card-inserted.png)
 
 ## What it does
 
 - **Copies by shoot day.** Each clip's day comes from the camera's own timestamps. A clip's proxy and sidecar files (`A001.braw`, `Proxy/A001.mp4`, `A001.sidecar` …) always travel with it, even if they were changed later. A "day starts at 04:00" setting keeps a night shoot that runs past midnight in the same day.
-- **Set your shoot dates once.** When a card goes in, the app opens by itself, ticks the days inside your dates and asks where to back up. Several cards? They queue up and run one after another with the same dates.
+- **Today, or your shoot dates.** When a card goes in, the app opens by itself with that card selected and today's footage ticked (or the card's latest day the morning after) — or the days inside a date range you set. A note at the top shows the card name and the exact folders it will write; one press of **Offload** and it's going. Several cards? They queue up one after another.
 - **Verified copies to every drive at once.** The card is read once and written to all destinations together. Then every copy is read back from the drive itself (cache bypassed) and checked against the card's checksum. Already-copied files are skipped, so offloading at lunch and again at wrap is safe.
 - **The card is only read.** Nothing on it is changed, renamed or deleted.
 - **Tidy folders.** `<drive>/<date>/<card>/…` with the card's own folder layout, plus a checksum record (`_offload_manifest.csv`, MD5 + xxHash3-128) in each.
