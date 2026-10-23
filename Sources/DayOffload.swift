@@ -253,7 +253,19 @@ final class Model: ObservableObject {
     @Published var reportPath: String?
 
     @Published var openOnCard = FileManager.default.fileExists(atPath: watcherPlist.path) {
-        didSet { setWatcher(openOnCard) }
+        didSet { if openOnCard != oldValue { setWatcher(openOnCard) } }
+    }
+    /// "Only while the app is open": card pop-ups without the app launching itself.
+    @Published var onlyWhileOpen = UserDefaults.standard.object(forKey: "onlyWhileOpen") as? Bool
+        ?? (UserDefaults.standard.bool(forKey: "autoOn") && !FileManager.default.fileExists(atPath: watcherPlist.path)) {
+        didSet { defaults.set(onlyWhileOpen, forKey: "onlyWhileOpen"); openOnCard = autoOn && !onlyWhileOpen }
+    }
+
+    /// The one "when a card goes in" switch: pick the dates, ask where to back up,
+    /// and (unless "only while open") open the app when it's closed.
+    var cardAssist: Bool {
+        get { autoOn }
+        set { autoOn = newValue; openOnCard = newValue && !onlyWhileOpen }
     }
     // Cards inserted while another card is being scanned, asked about or
     // offloaded wait here and are handled one after another, same date range.
@@ -1068,10 +1080,12 @@ struct ContentView: View {
                 } else {
 
                 Card(title: "Shoot dates", symbol: "calendar", summary: m.autoOn ? m.rangeText : "off") {
-                    Toggle("When a card goes in, pick these dates and ask where to back up", isOn: $m.autoOn)
+                    Toggle("When a card goes in, open Day Offload and ask where to back up", isOn: $m.cardAssist)
                         .toggleStyle(.switch)
-                    Toggle("Open Day Offload automatically when a card is connected", isOn: $m.openOnCard)
-                        .toggleStyle(.switch)
+                    Toggle("Only while the app is open", isOn: $m.onlyWhileOpen)
+                        .toggleStyle(.checkbox).font(.caption).foregroundStyle(.secondary)
+                        .disabled(!m.autoOn)
+                        .help("Don't open Day Offload by itself — only ask when it's already open.")
                     HStack(spacing: 10) {
                         Picker("", selection: $m.useToday) {
                             Text("Today").tag(true)
