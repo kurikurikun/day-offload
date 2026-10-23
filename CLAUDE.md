@@ -10,11 +10,10 @@ Mac app: offload only chosen shoot days from a camera card (never the whole card
 - `./Icon/make.sh` — regenerates `Icon/AppIcon.icns` + `docs/icon.png`.
 - Hidden flags: `--engine <scan|copy|compare> …` (the engine, see below), `--mount-check` (launchd helper), `--demo [sheet|compare]` (made-up data for screenshots — run a copy with another bundle id so real settings are untouched).
 
-## Release ritual (same as Peripheral Speed)
+## Release
 
-1. Bump `AppInfo.version` in `Sources/DayOffload.swift`.
-2. Commit, push, `./make-app.sh` on the Mac with the Developer ID cert (Chris's M1 Mac mini), `git tag vX.Y && git push origin vX.Y`.
-3. GitHub Release for the tag with BOTH zips attached: `DayOffload-X.Y.zip` and `DayOffload.zip` — move-ment.co/day-offload downloads `releases/latest/download/DayOffload.zip`.
+On the Mac with the Developer ID cert (Chris's M1 Mac mini), one command:
+`./release.sh 1.1 "what changed"` — pulls, sets `AppInfo.version`, commits, runs `make-app.sh` (notarize + Gatekeeper gate), tags `vX.Y`, and publishes a GitHub Release with BOTH `DayOffload-X.Y.zip` and `DayOffload.zip` (move-ment.co/day-offload downloads `releases/latest/download/DayOffload.zip`). Needs the GitHub CLI once: `brew install gh && gh auth login`. v1.0 was published by AirDropping the zip to another Mac because gh wasn't installed yet.
 
 ## Architecture (Sources/)
 
