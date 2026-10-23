@@ -23,7 +23,7 @@ func prettyDay(_ iso: String) -> String {
 
 enum AppInfo {
     /// Single source of truth for the version (make-app.sh reads it).
-    static let version = "1.1"
+    static let version = "1.2"
     static let repo = "https://github.com/kurikurikun/day-offload"
 }
 
