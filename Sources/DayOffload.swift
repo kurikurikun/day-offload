@@ -187,6 +187,8 @@ func revealInFinder(_ path: String) {
 struct CardResult: Identifiable {
     let id = UUID()
     let card: String, ok: Bool, text: String
+    /// Grey note (nothing to do), not a success or a failure.
+    var info = false
 }
 
 @MainActor
@@ -232,6 +234,8 @@ final class Model: ObservableObject {
         if isoDay.string(from: rangeFrom) != todayShootDay || isoDay.string(from: rangeTo) != todayShootDay { useToday = false }
     }
     @Published var showSheet = false
+    /// Today mode found nothing from today, so the pop-up offers this (the card's latest day) instead.
+    @Published var todayFallbackDay: String?
     // Compare: day-by-day shoot copies vs. the whole-card Stow backup made at the office.
     @Published var mode: Mode = .offload
     @Published var shootDirs: [URL] = (UserDefaults.standard.stringArray(forKey: "shootDirs") ?? []).map { URL(fileURLWithPath: $0) } {
@@ -443,7 +447,7 @@ final class Model: ObservableObject {
 
     func scan(auto: Bool = false) {
         guard let src = source else { days = []; return }
-        scanning = true; days = []; result = nil
+        scanning = true; days = []; result = nil; todayFallbackDay = nil
         run(["scan", "--source", src.path, "--day-start-hour", String(dayStartHour)], onEvent: { e in
             if e["type"] as? String == "scan", let list = e["days"] as? [[String: Any]] {
                 self.days = list.map { DaySummary(day: $0["day"] as! String, files: $0["files"] as! Int,
@@ -460,9 +464,14 @@ final class Model: ObservableObject {
             self.scanning = false
             if auto {
                 NSApp.activate(ignoringOtherApps: true)
-                if self.selectedDays.isEmpty {
-                    self.result = (false, "\(self.label): nothing from \(self.rangeText) on this card.")
-                    self.record()
+                if self.selectedDays.isEmpty, self.useToday, let latest = self.days.map(\.day).max() {
+                    // Offloading the morning after: no footage from today, so offer the card's latest day.
+                    self.selectedDays = [latest]
+                    self.todayFallbackDay = latest
+                    self.showSheet = true
+                } else if self.selectedDays.isEmpty {
+                    self.history.insert(CardResult(card: self.label, ok: true,
+                                                   text: "Nothing from \(self.rangeText) on this card.", info: true), at: 0)
                     self.processNext()
                 } else {
                     self.showSheet = true
@@ -795,6 +804,10 @@ struct OffloadSheet: View {
             Text(m.chosen.map(\.day).sorted().map(prettyDay).joined(separator: "  ·  "))
                 .font(.callout).padding(.vertical, 6).padding(.horizontal, 12)
                 .glassCapsule(tint: .accentColor.opacity(0.25))
+            if let d = m.todayFallbackDay {
+                Label("Nothing from today — showing \(prettyDay(d))", systemImage: "info.circle")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
             if !m.queue.isEmpty {
                 Label("Next: " + m.queue.map(\.lastPathComponent).joined(separator: ", "), systemImage: "tray.full")
                     .font(.caption).foregroundStyle(.secondary)
@@ -1112,8 +1125,8 @@ struct ContentView: View {
                     Card(title: "Offloaded this session", symbol: "checklist") {
                         ForEach(m.history) { h in
                             HStack(alignment: .top) {
-                                Image(systemName: h.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                                    .foregroundStyle(h.ok ? .green : .red)
+                                Image(systemName: h.info ? "info.circle.fill" : h.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                                    .foregroundStyle(h.info ? Color.secondary : h.ok ? Color.green : Color.red)
                                 Text(h.card).bold()
                                 Text(h.text).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                             }
