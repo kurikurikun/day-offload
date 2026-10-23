@@ -233,7 +233,8 @@ final class Model: ObservableObject {
         guard !syncing, useToday else { return }
         if isoDay.string(from: rangeFrom) != todayShootDay || isoDay.string(from: rangeTo) != todayShootDay { useToday = false }
     }
-    @Published var showSheet = false
+    /// The card that just went in — shown as a note at the top of the main window.
+    @Published var arrived: String?
     /// Today mode found nothing from today, so the pop-up offers this (the card's latest day) instead.
     @Published var todayFallbackDay: String?
     // Compare: day-by-day shoot copies vs. the whole-card Stow backup made at the office.
@@ -271,7 +272,7 @@ final class Model: ObservableObject {
     // offloaded wait here and are handled one after another, same date range.
     @Published var queue: [URL] = []
     @Published var history: [CardResult] = []
-    var busy: Bool { running || scanning || showSheet }
+    var busy: Bool { running || scanning }
 
     @Published var scanning = false
     @Published var running = false
@@ -310,7 +311,7 @@ final class Model: ObservableObject {
         autoOn = true
         selectedDays = ["2026-10-17", "2026-10-16"]
         history = [CardResult(card: "B002", ok: true, text: "Done. 388 files copied and checksum-verified on 2 drive(s).")]
-        if CommandLine.arguments.contains("sheet") { showSheet = true }
+        if CommandLine.arguments.contains("sheet") { arrived = "A001" }
         if CommandLine.arguments.contains("compare") {
             mode = .compare
             shootDirs = [URL(fileURLWithPath: "/Volumes/SHOOT_SSD/2026_10_Documentary")]
@@ -376,6 +377,7 @@ final class Model: ObservableObject {
 
     func choose(_ url: URL?, auto: Bool = false) {
         syncToday()
+        if !auto { arrived = nil }
         source = url
         label = url?.lastPathComponent ?? ""
         scan(auto: auto)
@@ -432,8 +434,15 @@ final class Model: ObservableObject {
     }
 
     func skip() {
-        showSheet = false
+        arrived = nil
         processNext()
+    }
+
+    /// A card just went in: make sure the panels that matter are open, on the Offload tab.
+    func announceArrival() {
+        arrived = label
+        mode = .offload
+        for key in ["folded.Card", "folded.Back up to (copied to each)"] { defaults.set(false, forKey: key) }
     }
 
     func record() {
@@ -486,13 +495,13 @@ final class Model: ObservableObject {
                     // Offloading the morning after: no footage from today, so offer the card's latest day.
                     self.selectedDays = [latest]
                     self.todayFallbackDay = latest
-                    self.showSheet = true
+                    self.announceArrival()
                 } else if self.selectedDays.isEmpty {
                     self.history.insert(CardResult(card: self.label, ok: true,
                                                    text: "Nothing from \(self.rangeText) on this card.", info: true), at: 0)
                     self.processNext()
                 } else {
-                    self.showSheet = true
+                    self.announceArrival()
                 }
             }
         })
@@ -505,7 +514,7 @@ final class Model: ObservableObject {
     }
 
     func offload() {
-        showSheet = false
+        arrived = nil
         guard let src = source, let lo = selectedDays.min(), let hi = selectedDays.max(), !dests.isEmpty else { return }
         if dests.contains(where: { $0.path.hasPrefix(src.path + "/") || $0.path == src.path }) {
             result = (false, "A destination is on the card itself. Choose a different drive."); return
@@ -827,52 +836,6 @@ struct PlannedFolders: View {
     }
 }
 
-struct OffloadSheet: View {
-    @ObservedObject var m: Model
-    var destsMissing: Bool { !m.isDemo && (m.dests.isEmpty || m.dests.contains { !FileManager.default.fileExists(atPath: $0.path) }) }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                Image(systemName: "sdcard.fill").font(.system(size: 30)).foregroundStyle(.tint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(m.label) inserted").font(.title2).bold()
-                    Text("\(fileCount(m.chosenFiles)) · \(gb(m.chosenBytes))").foregroundStyle(.secondary)
-                }
-            }
-            Text(m.chosen.map(\.day).sorted().map(prettyDay).joined(separator: "  ·  "))
-                .font(.callout).padding(.vertical, 6).padding(.horizontal, 12)
-                .glassCapsule(tint: .accentColor.opacity(0.25))
-            if let d = m.todayFallbackDay {
-                Label("Nothing from today — showing \(prettyDay(d))", systemImage: "info.circle")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            if !m.queue.isEmpty {
-                Label("Next: " + m.queue.map(\.lastPathComponent).joined(separator: ", "), systemImage: "tray.full")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Text("Back up to").font(.headline)
-            DestinationList(m: m)
-            HStack {
-                Text("Card name").foregroundStyle(.secondary)
-                TextField("A001", text: $m.label).textFieldStyle(.roundedBorder).frame(width: 160)
-            }
-            PlannedFolders(m: m)
-            HStack {
-                Spacer()
-                Button("Not a card") { m.notACard() }
-                    .glassButton().controlSize(.large)
-                    .help("This is a backup drive, not a camera card. Don't ask about it again.")
-                Button(m.queue.isEmpty ? "Not now" : "Skip this card") { m.skip() }
-                    .keyboardShortcut(.cancelAction).glassButton().controlSize(.large)
-                Button { m.offload() } label: { Label("Offload", systemImage: "arrow.down.doc.fill") }
-                    .keyboardShortcut(.defaultAction).glassProminentButton().controlSize(.large)
-                    .disabled(destsMissing)
-            }
-        }
-        .padding(24).frame(width: 500)
-    }
-}
-
 struct CompareView: View {
     @ObservedObject var m: Model
 
@@ -1082,6 +1045,61 @@ struct CompareView: View {
     }
 }
 
+/// Shown at the top when a card goes in: what's ready, and one-press Offload.
+struct ArrivalNote: View {
+    @ObservedObject var m: Model
+    var destsMissing: Bool {
+        !m.isDemo && (m.dests.isEmpty || m.dests.contains { !FileManager.default.fileExists(atPath: $0.path) })
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "sdcard.fill").font(.system(size: 26)).foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(m.arrived ?? m.label) just went in").font(.headline)
+                    Text(m.chosen.isEmpty ? "Tick the days to copy below."
+                         : "\(fileCount(m.chosenFiles)) · \(gb(m.chosenBytes)) ready from "
+                           + m.chosen.map(\.day).sorted().map(prettyDay).joined(separator: ", "))
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { m.skip() } label: { Image(systemName: "xmark") }
+                    .glassButton().buttonBorderShape(.circle).controlSize(.small)
+                    .help(m.queue.isEmpty ? "Dismiss" : "Skip this card and go to the next one")
+            }
+            if let d = m.todayFallbackDay {
+                Label("Nothing from today — showing \(prettyDay(d))", systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if !m.queue.isEmpty {
+                Label("Next: " + m.queue.map(\.lastPathComponent).joined(separator: ", "), systemImage: "tray.full")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if m.dests.isEmpty {
+                Label("Add a backup drive below first.", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange)
+            } else if destsMissing {
+                Label("A backup drive isn't connected.", systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            HStack {
+                Text("Card name").font(.callout).foregroundStyle(.secondary)
+                TextField("A001", text: $m.label).textFieldStyle(.roundedBorder).frame(width: 180)
+            }
+            PlannedFolders(m: m)
+            HStack {
+                Text("Check the card name and folders, then:").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button { m.offload() } label: { Label("Offload", systemImage: "arrow.down.doc.fill") }
+                    .glassProminentButton().controlSize(.large)
+                    .disabled(m.chosen.isEmpty || destsMissing)
+            }
+        }
+        .padding(16)
+        .glassPanel(tint: .accentColor.opacity(0.18), cornerRadius: 22)
+    }
+}
+
 struct ContentView: View {
     @StateObject var m = Model()
 
@@ -1105,6 +1123,8 @@ struct ContentView: View {
                 if m.mode == .compare {
                     CompareView(m: m)
                 } else {
+
+                if m.arrived != nil { ArrivalNote(m: m) }
 
                 Card(title: "Shoot dates", symbol: "calendar", summary: m.autoOn ? m.rangeText : "off") {
                     Toggle("When a card goes in, open Day Offload and ask where to back up", isOn: $m.cardAssist)
@@ -1146,6 +1166,12 @@ struct ContentView: View {
                             .glassButton()
                         Button { m.refreshVolumes() } label: { Image(systemName: "arrow.clockwise") }
                             .glassButton().buttonBorderShape(.circle)
+                        Spacer()
+                        if m.source != nil && !m.running {
+                            Button("Not a card") { m.notACard() }
+                                .glassButton().controlSize(.small)
+                                .help("This is a backup drive, not a camera card. Don't offer it again.")
+                        }
                     }
                     daysList
                 }
@@ -1190,7 +1216,6 @@ struct ContentView: View {
         .frame(width: 600)
         .frame(minHeight: 420, idealHeight: 820)
         .background(Backdrop())
-        .sheet(isPresented: $m.showSheet) { OffloadSheet(m: m) }
         .task {
             // Opened by the card watcher (or with cards already in): go straight to them.
             if m.autoOn && !m.isDemo { m.queueAllMounted() }
