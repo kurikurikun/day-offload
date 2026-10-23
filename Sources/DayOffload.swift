@@ -336,6 +336,12 @@ final class Model: ObservableObject {
 
     var chosen: [DaySummary] { days.filter { selectedDays.contains($0.day) } }
     var chosenFiles: Int { chosen.map(\.files).reduce(0, +) }
+
+    /// The exact folders this offload will write: <destination>/<shoot day>/<card name>/
+    var plannedFolders: [String] {
+        let card = label.isEmpty ? (source?.lastPathComponent ?? "CARD") : label
+        return dests.flatMap { d in chosen.map(\.day).sorted().map { "\(d.path)/\($0)/\(card)/" } }
+    }
     var chosenBytes: Int64 { chosen.map(\.bytes).reduce(0, +) }
     /// Today's shoot day: before the day-start hour (04:00) it's still yesterday's shoot.
     var todayShootDay: String {
@@ -801,6 +807,26 @@ struct DestinationList: View {
     }
 }
 
+/// "Files go to" — every final folder, so it's clear where this offload lands.
+struct PlannedFolders: View {
+    @ObservedObject var m: Model
+    var body: some View {
+        let folders = m.plannedFolders
+        if !folders.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Files go to").font(.caption.bold()).foregroundStyle(.secondary)
+                ForEach(folders, id: \.self) { f in
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder").font(.caption2).foregroundStyle(.secondary)
+                        Text(f).font(.caption.monospaced()).lineLimit(1).truncationMode(.head)
+                            .textSelection(.enabled).help(f)
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct OffloadSheet: View {
     @ObservedObject var m: Model
     var destsMissing: Bool { !m.isDemo && (m.dests.isEmpty || m.dests.contains { !FileManager.default.fileExists(atPath: $0.path) }) }
@@ -830,6 +856,7 @@ struct OffloadSheet: View {
                 Text("Card name").foregroundStyle(.secondary)
                 TextField("A001", text: $m.label).textFieldStyle(.roundedBorder).frame(width: 160)
             }
+            PlannedFolders(m: m)
             HStack {
                 Spacer()
                 Button("Not a card") { m.notACard() }
@@ -1129,8 +1156,11 @@ struct ContentView: View {
                     HStack {
                         Text("Card name").foregroundStyle(.secondary)
                         TextField("A001", text: $m.label).textFieldStyle(.roundedBorder).frame(width: 150)
-                        Text("→ …/<date>/\(m.label.isEmpty ? "CARD" : m.label)/").foregroundStyle(.secondary).font(.caption)
+                        if m.plannedFolders.isEmpty {
+                            Text("→ …/<date>/\(m.label.isEmpty ? "CARD" : m.label)/").foregroundStyle(.secondary).font(.caption)
+                        }
                     }
+                    PlannedFolders(m: m)
                 }
 
                 actionArea
