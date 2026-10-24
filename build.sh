@@ -6,7 +6,7 @@ cd "${0:A:h}"
 T=$(mktemp -d /tmp/dayoffload-dev.XXXXXX)
 APP="$T/Day Offload.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-swiftc -O -parse-as-library Sources/DayOffload.swift Sources/Engine.swift Sources/XXH3.swift -o "$APP/Contents/MacOS/DayOffload"
+swiftc -O -parse-as-library Sources/DayOffload.swift Sources/Engine.swift Sources/XXH3.swift Sources/Update.swift -o "$APP/Contents/MacOS/DayOffload"
 cp Icon/AppIcon.icns "$APP/Contents/Resources/"
 VERSION=$(grep 'static let version' Sources/DayOffload.swift | sed 's/.*"\(.*\)".*/\1/')
 cat > "$APP/Contents/Info.plist" <<EOF

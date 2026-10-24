@@ -19,6 +19,7 @@ On the Mac with the Developer ID cert (Chris's M1 Mac mini), one command:
 
 - `DayOffload.swift` — SwiftUI app (Model + views). Runs the engine as a child process of the same binary (`--engine …`) and reads JSON-line events (`scan`, `plan`, `progress`, `done`, `compare_plan`, `compare_done`, `error`), so the UI never blocks and Cancel = terminate.
 - `Engine.swift` — scan / copy / compare. Ported 1:1 from the original Python engine (kept out of the repo); outputs and the manifest/cache file formats are identical, and both engines were diffed against each other.
+- `Update.swift` — checks GitHub `releases/latest` on launch + daily; "update now" downloads `DayOffload.zip`, installs only if signed by team PNDN4CQY5T (SecRequirement), swaps via a detached shell after quit, relaunches. Disabled while a copy runs. Test hook: `--install-update` (run on a copy with a lower version, never on /Applications).
 - `XXH3.swift` — streaming XXH3-128 (the hash Stow / ASC-MHL v2 use). ~8 GB/s.
 - Card detection (`looksLikeCard`) runs off the main thread with a 3 s budget: a pending macOS removable-volume permission prompt blocks `open()` and used to freeze the window.
 - launchd agent `co.move-ment.dayoffload.cardwatch` (StartOnMount) runs `--mount-check`, which opens the app only if a camera card is mounted and the app isn't running.

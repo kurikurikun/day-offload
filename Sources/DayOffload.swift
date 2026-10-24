@@ -1102,6 +1102,7 @@ struct ArrivalNote: View {
 
 struct ContentView: View {
     @StateObject var m = Model()
+    @StateObject var updates = UpdateChecker()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1216,6 +1217,7 @@ struct ContentView: View {
         .frame(width: 600)
         .frame(minHeight: 420, idealHeight: 820)
         .background(Backdrop())
+        .task { if !m.isDemo { updates.start() } }
         .task {
             // Opened by the card watcher (or with cards already in): go straight to them.
             if m.autoOn && !m.isDemo { m.queueAllMounted() }
@@ -1241,6 +1243,23 @@ struct ContentView: View {
                 }
             }
             Spacer()
+            if let latest = updates.latest, !m.isDemo {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Button {
+                        updates.installUpdate()
+                    } label: {
+                        Label(updates.updating ? "Updating…" : "v\(latest.version) is out — update", systemImage: "arrow.down.circle.fill")
+                    }
+                    .glassProminentButton().controlSize(.small)
+                    .disabled(updates.updating || m.running)
+                    .help(m.running ? "Finish the current copy first." : "Download, check Apple's signature, install and relaunch.")
+                    if let err = updates.updateError, let url = URL(string: latest.url) {
+                        Link(err + " Download manually", destination: url).font(.caption2).foregroundStyle(.red)
+                    } else if m.running {
+                        Text("after this copy").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
             if !m.queue.isEmpty {
                 Label("\(m.queue.count) waiting", systemImage: "tray.full.fill")
                     .font(.callout).padding(.vertical, 6).padding(.horizontal, 12)
@@ -1330,6 +1349,11 @@ struct ContentView: View {
 enum Launcher {
     static func main() {
         let args = CommandLine.arguments
+        if args.contains("--install-update") {
+            // dev/test hook: run the full self-update without the window
+            if let err = UpdateChecker.performUpdate() { print("update failed: \(err)"); exit(1) }
+            print("update staged, relaunching"); RunLoop.main.run(until: Date().addingTimeInterval(2)); exit(0)
+        }
         if args.count > 1 && args[1] == "--engine" {
             exit(Engine.main(Array(args.dropFirst(2))))
         } else if args.contains("--mount-check") {

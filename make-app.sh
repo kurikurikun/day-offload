@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION=$(grep 'static let version' Sources/DayOffload.swift | sed 's/.*"\(.*\)".*/\1/')
-SOURCES=(Sources/DayOffload.swift Sources/Engine.swift Sources/XXH3.swift)
+SOURCES=(Sources/DayOffload.swift Sources/Engine.swift Sources/XXH3.swift Sources/Update.swift)
 
 # Some Command Line Tools releases ship no SwiftUI macro plugin, so SwiftUI
 # code fails to compile against the newest SDK. Probe, and fall back to the
